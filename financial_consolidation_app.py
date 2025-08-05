@@ -667,13 +667,13 @@ def process_all_files():
             master_wb = load_workbook(filename=BytesIO(template_file.read()), data_only=False)
 
             # Check for required sheets
-            required_sheets_template = ["Income", "Income_statement", "Balance sheet", "Consolidated Balance Sheet"]
+            required_sheets_template = ["Income", "Income_statement", "Balance sheet", "Balance_sheet"]
             missing_sheets = [sheet for sheet in required_sheets_template if sheet not in master_wb.sheetnames]
             if missing_sheets:
                 raise Exception(f"Template file is missing required sheets: {', '.join(missing_sheets)}")
 
             master_ws_inc = master_wb["Income"]
-            master_ws_bs = master_wb["Consolidated Balance Sheet"]
+            master_ws_bs = master_wb["Balance_sheet"]
         except Exception as e:
             raise Exception(f"Error loading template file: {str(e)}")
 
@@ -1002,7 +1002,7 @@ def process_all_files():
                 ws.cell(row=template_rows[lbl], column=1).fill = yellow
 
         # Highlight Intercompany row
-        bs_ws = master_wb["Consolidated Balance Sheet"]
+        bs_ws = master_wb["Balance_sheet"]
         for r in range(1, bs_ws.max_row + 1):
             if str(bs_ws.cell(row=r, column=1).value).strip().upper() == "INTERCOMPANY":
                 for c in range(1, 16):
