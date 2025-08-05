@@ -213,6 +213,13 @@ def normalize_label(raw_label):
         s = re.sub(pat, replacement, s)
     return s.strip()
 
+def normalize_filename(filename):
+    """Remove number suffixes like (1), (2) from filenames"""
+    import re
+    # Remove patterns like " (1)", " (2)", etc. from filename
+    cleaned = re.sub(r'\s*\(\d+\)(?=\.xlsx)', '', filename)
+    return cleaned
+
 
 def find_income_sheet(wb):
     for name in wb.sheetnames:
@@ -422,7 +429,11 @@ def match_and_write(ws, start_row, end_row, src_dict, target_col_idx):
             cell.value = 0
 
 
+# Then modify the process_one_file_ytd function (around line 415):
 def process_one_file_ytd(file_bytes, filename, master_ws, header_row=5):
+    # Normalize the filename first
+    normalized_filename = normalize_filename(filename)
+    
     src_wb = load_workbook(filename=BytesIO(file_bytes), data_only=True)
     inc_name = find_income_sheet(src_wb)
     if not inc_name:
@@ -435,10 +446,11 @@ def process_one_file_ytd(file_bytes, filename, master_ws, header_row=5):
         st.session_state.processing_logs.append(f"WARNING: anchors not found in {filename}. Skipping.")
         return
 
-    if filename in filename_to_header:
-        site = filename_to_header[filename].upper()
+    # Use normalized filename for lookup
+    if normalized_filename in filename_to_header:
+        site = filename_to_header[normalized_filename].upper()
     else:
-        site = filename.replace(".xlsx", "").replace(f'fs{file_year}', "").upper()
+        site = normalized_filename.replace(".xlsx", "").replace(f'fs{file_year}', "").upper()
         if site == "BEECHGROVE":
             site = "SCARBOROUGH"
 
@@ -467,7 +479,11 @@ def process_one_file_ytd(file_bytes, filename, master_ws, header_row=5):
     st.session_state.processing_logs.append(f"✅ YTD data written from {site} → column {target_col}.")
 
 
+# Similarly modify process_one_file_month function:
 def process_one_file_month(file_bytes, filename, master_ws, header_row=5):
+    # Normalize the filename first
+    normalized_filename = normalize_filename(filename)
+    
     src_wb = load_workbook(filename=BytesIO(file_bytes), data_only=True)
     inc_name = find_income_sheet(src_wb)
     if not inc_name:
@@ -478,10 +494,11 @@ def process_one_file_month(file_bytes, filename, master_ws, header_row=5):
     if not rev_dict and not exp_dict and not inc_dict:
         return
 
-    if filename in filename_to_header:
-        site = filename_to_header[filename].upper()
+    # Use normalized filename for lookup
+    if normalized_filename in filename_to_header:
+        site = filename_to_header[normalized_filename].upper()
     else:
-        site = filename.replace(".xlsx", "").replace(f'fs{file_year}', "").upper()
+        site = normalized_filename.replace(".xlsx", "").replace(f'fs{file_year}', "").upper()
         if site == "BEECHGROVE":
             site = "SCARBOROUGH"
 
@@ -706,12 +723,16 @@ def process_all_files():
                 file.seek(0)  # Reset file pointer
                 file_bytes = file.read()
                 filename = file.name
-
-                if filename in filename_to_header:
-                    header_label = filename_to_header[filename]
+                
+                # Normalize the filename
+                normalized_filename = normalize_filename(filename)
+                
+                if normalized_filename in filename_to_header:
+                    header_label = filename_to_header[normalized_filename]
                     summary = process_balance_sheet_file(file_bytes)
                     if summary is not None:
                         all_summaries[header_label] = summary
+                
 
                 progress = 0.5 + (idx + 1) / (total_files * 2) * 0.2
                 progress_bar.progress(progress, text=f"Processing balance sheets... {idx + 1}/{total_files}")
