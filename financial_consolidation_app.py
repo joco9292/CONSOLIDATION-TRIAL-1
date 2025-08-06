@@ -339,6 +339,138 @@ def parse_income_sheet_ytd(ws):
     return rev_dict, exp_dict, inc_dict
 
 
+def parse_income_sheet_month(ws):
+    """Parse monthly data from income sheet with comprehensive debugging"""
+    anchors = find_anchor_rows(ws)
+    rev_row = anchors["rev_start"]
+    exp_row = anchors["exp_start"]
+    inc_row = anchors["inc_start"]
+
+    if rev_row is None or exp_row is None or inc_row is None:
+        st.session_state.processing_logs.append(f"[ERROR] Missing anchor rows: rev={rev_row}, exp={exp_row}, inc={inc_row}")
+        return {}, {}, {}
+
+    month_col = find_month_column(ws)
+    
+    # Debug: Log the column being used and anchor positions
+    st.session_state.processing_logs.append(f"[DEBUG] Monthly parsing - Column: {month_col}, Revenue rows: {rev_row+1} to {exp_row-1}")
+    
+    rev_dict = {}
+    exp_dict = {}
+    inc_dict = {}
+
+    # ===== REVENUE SECTION =====
+    st.session_state.processing_logs.append("[DEBUG] === REVENUE SECTION ===")
+    
+    # Check what's in the first revenue row
+    if rev_row + 1 < exp_row:
+        first_label = ws.cell(row=rev_row + 1, column=1).value
+        first_value = ws.cell(row=rev_row + 1, column=month_col).value
+        st.session_state.processing_logs.append(f"[DEBUG] First revenue row ({rev_row + 1}): label='{first_label}', value='{first_value}'")
+    
+    for r in range(rev_row + 1, exp_row):
+        raw_label = ws.cell(row=r, column=1).value
+        if not raw_label:
+            continue
+            
+        txt = str(raw_label)
+        
+        # Skip total rows
+        if re.search(r'\btotal revenue\b', txt, re.IGNORECASE):
+            st.session_state.processing_logs.append(f"[DEBUG] Skipping total row {r}: '{txt}'")
+            continue
+            
+        key = normalize_label(txt)
+        val = ws.cell(row=r, column=month_col).value or 0
+        
+        # Log first few revenue items for debugging
+        if len(rev_dict) < 3:
+            st.session_state.processing_logs.append(f"[DEBUG] Revenue row {r}: '{txt}' -> normalized: '{key}' = {val}")
+        
+        rev_dict[key] = rev_dict.get(key, 0) + val
+
+    st.session_state.processing_logs.append(f"[DEBUG] Total revenue items parsed: {len(rev_dict)}")
+    if rev_dict:
+        st.session_state.processing_logs.append(f"[DEBUG] Revenue keys: {list(rev_dict.keys())[:5]}...")  # Show first 5
+
+    # ===== EXPENSES SECTION =====
+    st.session_state.processing_logs.append("[DEBUG] === EXPENSES SECTION ===")
+    
+    # Check what's in the first expense row
+    if exp_row + 1 < inc_row:
+        first_label = ws.cell(row=exp_row + 1, column=1).value
+        first_value = ws.cell(row=exp_row + 1, column=month_col).value
+        st.session_state.processing_logs.append(f"[DEBUG] First expense row ({exp_row + 1}): label='{first_label}', value='{first_value}'")
+    
+    for r in range(exp_row + 1, inc_row):
+        raw_label = ws.cell(row=r, column=1).value
+        if not raw_label:
+            continue
+            
+        txt = str(raw_label)
+        
+        # Skip total rows
+        if re.search(r'\btotal operating expenses\b', txt, re.IGNORECASE):
+            st.session_state.processing_logs.append(f"[DEBUG] Skipping total row {r}: '{txt}'")
+            continue
+            
+        key = normalize_label(txt)
+        val = ws.cell(row=r, column=month_col).value or 0
+        
+        # Log first few expense items for debugging
+        if len(exp_dict) < 3:
+            st.session_state.processing_logs.append(f"[DEBUG] Expense row {r}: '{txt}' -> normalized: '{key}' = {val}")
+        
+        exp_dict[key] = exp_dict.get(key, 0) + val
+
+    st.session_state.processing_logs.append(f"[DEBUG] Total expense items parsed: {len(exp_dict)}")
+    if exp_dict:
+        st.session_state.processing_logs.append(f"[DEBUG] Expense keys: {list(exp_dict.keys())[:5]}...")  # Show first 5
+
+    # ===== INCOME SECTION =====
+    st.session_state.processing_logs.append("[DEBUG] === INCOME SECTION ===")
+    
+    # Check what's in the first income row
+    if inc_row + 1 <= ws.max_row:
+        first_label = ws.cell(row=inc_row + 1, column=1).value
+        first_value = ws.cell(row=inc_row + 1, column=month_col).value
+        st.session_state.processing_logs.append(f"[DEBUG] First income row ({inc_row + 1}): label='{first_label}', value='{first_value}'")
+    
+    r = inc_row + 1
+    income_count = 0
+    while r <= ws.max_row:
+        raw_label = ws.cell(row=r, column=1).value
+        if not raw_label:
+            break
+            
+        txt = str(raw_label)
+        
+        # Stop at total or net rental income rows
+        if re.search(r'\btotal\b', txt, re.IGNORECASE) or re.search(r'\bnet rental income\b', txt, re.IGNORECASE):
+            st.session_state.processing_logs.append(f"[DEBUG] Stopping at row {r}: '{txt}'")
+            break
+            
+        key = normalize_label(txt)
+        val = ws.cell(row=r, column=month_col).value or 0
+        
+        # Log first few income items for debugging
+        if income_count < 3:
+            st.session_state.processing_logs.append(f"[DEBUG] Income row {r}: '{txt}' -> normalized: '{key}' = {val}")
+            income_count += 1
+        
+        inc_dict[key] = inc_dict.get(key, 0) + val
+        r += 1
+
+    st.session_state.processing_logs.append(f"[DEBUG] Total income items parsed: {len(inc_dict)}")
+    if inc_dict:
+        st.session_state.processing_logs.append(f"[DEBUG] Income keys: {list(inc_dict.keys())}")  # Show all income keys
+
+    # Final summary
+    st.session_state.processing_logs.append("[DEBUG] === MONTHLY PARSING COMPLETE ===")
+    st.session_state.processing_logs.append(f"[DEBUG] Summary - Revenue: {len(rev_dict)} items, Expenses: {len(exp_dict)} items, Income: {len(inc_dict)} items")
+
+    return rev_dict, exp_dict, inc_dict
+
 
 def match_and_write(ws, start_row, end_row, src_dict, target_col_idx):
     candidates = list(src_dict.keys())
