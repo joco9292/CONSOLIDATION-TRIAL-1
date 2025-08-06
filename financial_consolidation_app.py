@@ -671,7 +671,7 @@ def process_one_file_month(file_bytes, filename, master_ws, header_row=5):
     # CORRECTED: Don't extend the revenue section into the Expenses header
     # Revenue should end at row 64, not 65 or 66
     match_and_write(master_ws, first_revenue_row, 64, rev_dict, target_col)  # Revenue: 54-64
-    match_and_write(master_ws, 66, 79, exp_dict, target_col)  # Expenses: 66-79 (not 67!)
+    match_and_write(master_ws, 67, 79, exp_dict, target_col)  # Expenses: 66-79 (not 67!)
     match_and_write(master_ws, 85, 92, inc_dict, target_col)  # Income: 85-92
     
     st.session_state.processing_logs.append(f"✅ Monthly data written from {site} → column {target_col}.")
