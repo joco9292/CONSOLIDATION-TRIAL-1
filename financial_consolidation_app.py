@@ -559,9 +559,67 @@ def process_one_file_ytd(file_bytes, filename, master_ws, header_row=5):
     match_and_write(master_ws, 38, 46, inc_dict, target_col)
     st.session_state.processing_logs.append(f"✅ YTD data written from {site} → column {target_col}.")
 
+def diagnose_template_structure(master_ws_inc):
+    """Diagnose the template structure to find why first row is skipped"""
+    st.session_state.processing_logs.append("\n[DIAGNOSTIC] === TEMPLATE STRUCTURE ANALYSIS ===")
+    
+    # Check YTD section (rows 6-16 for revenue)
+    st.session_state.processing_logs.append("\n[DIAGNOSTIC] YTD Revenue Section (rows 6-16):")
+    for r in range(6, 17):
+        value = master_ws_inc.cell(row=r, column=1).value
+        if value:
+            normalized = normalize_label(value)
+            st.session_state.processing_logs.append(f"  Row {r}: '{value}' -> normalized: '{normalized}'")
+    
+    # Check Monthly section structure
+    st.session_state.processing_logs.append("\n[DIAGNOSTIC] Monthly Section Structure:")
+    
+    # Check what's in rows 53-56 (around monthly revenue start)
+    st.session_state.processing_logs.append("\n[DIAGNOSTIC] Rows 53-56 (Monthly Revenue area):")
+    for r in range(53, 57):
+        col_a = master_ws_inc.cell(row=r, column=1).value
+        col_b = master_ws_inc.cell(row=r, column=2).value
+        col_c = master_ws_inc.cell(row=r, column=3).value
+        st.session_state.processing_logs.append(f"  Row {r}: A='{col_a}', B='{col_b}', C='{col_c}'")
+    
+    # Check the actual revenue items in monthly section
+    st.session_state.processing_logs.append("\n[DIAGNOSTIC] Monthly Revenue Items (rows 55-65):")
+    revenue_items = []
+    for r in range(55, 66):
+        value = master_ws_inc.cell(row=r, column=1).value
+        if value:
+            normalized = normalize_label(value)
+            revenue_items.append((r, value, normalized))
+            st.session_state.processing_logs.append(f"  Row {r}: '{value}' -> normalized: '{normalized}'")
+    
+    # Check if first item is actually at row 56 instead of 55
+    if not master_ws_inc.cell(row=55, column=1).value:
+        st.session_state.processing_logs.append("\n[DIAGNOSTIC] ⚠️ Row 55 is EMPTY! First item might be at row 56")
+    
+    # Compare with YTD section to see if labels match
+    st.session_state.processing_logs.append("\n[DIAGNOSTIC] Checking label consistency between YTD and Monthly:")
+    ytd_first = master_ws_inc.cell(row=6, column=1).value
+    monthly_first_55 = master_ws_inc.cell(row=55, column=1).value
+    monthly_first_56 = master_ws_inc.cell(row=56, column=1).value
+    
+    st.session_state.processing_logs.append(f"  YTD first item (row 6): '{ytd_first}'")
+    st.session_state.processing_logs.append(f"  Monthly row 55: '{monthly_first_55}'")
+    st.session_state.processing_logs.append(f"  Monthly row 56: '{monthly_first_56}'")
+    
+    # Check for common template issues
+    if monthly_first_55 and "revenue" in str(monthly_first_55).lower():
+        st.session_state.processing_logs.append("\n[DIAGNOSTIC] ⚠️ Row 55 appears to be a HEADER ('Revenue') not a data row!")
+        st.session_state.processing_logs.append("[DIAGNOSTIC] → Solution: Start monthly revenue at row 56 instead of 55")
+    
+    st.session_state.processing_logs.append("\n[DIAGNOSTIC] === END ANALYSIS ===\n")
 
-# Similarly modify process_one_file_month function:
+
+# Add this modified process_one_file_month function
 def process_one_file_month(file_bytes, filename, master_ws, header_row=5):
+    # Run diagnostic on first file only
+    if "Bedford" in filename:
+        diagnose_template_structure(master_ws)
+    
     # Normalize the filename first
     normalized_filename = normalize_filename(filename)
     
@@ -601,12 +659,23 @@ def process_one_file_month(file_bytes, filename, master_ws, header_row=5):
             for k in d:
                 d[k] = d[k] / 2
 
-    match_and_write(master_ws, 55, 65, rev_dict, target_col)
-    match_and_write(master_ws, 68, 81, exp_dict, target_col)
-    match_and_write(master_ws, 87, 94, inc_dict, target_col)
+    # Check if we should adjust the row ranges
+    # If row 55 is empty or a header, start from row 56
+    first_revenue_row = 53
+    first_value = master_ws.cell(row=53, column=1).value
+    if not first_value or "revenue" in str(first_value).lower():
+        first_revenue_row = 54
+        st.session_state.processing_logs.append(f"[DEBUG] Adjusting monthly revenue to start at row {first_revenue_row}")
+    
+    # Adjusted row ranges
+    revenue_end = 65 if first_revenue_row == 53 else 66
+    
+    match_and_write(master_ws, first_revenue_row, revenue_end, rev_dict, target_col)
+    match_and_write(master_ws, 67, 81, exp_dict, target_col)
+    match_and_write(master_ws, 86, 94, inc_dit, target_col)
+    
     st.session_state.processing_logs.append(f"✅ Monthly data written from {site} → column {target_col}.")
-
-
+    
 # Balance sheet parsing functions
 def parse_section(df, start_label, total_label):
     try:
