@@ -339,57 +339,6 @@ def parse_income_sheet_ytd(ws):
     return rev_dict, exp_dict, inc_dict
 
 
-def parse_income_sheet_month(ws):
-    anchors = find_anchor_rows(ws)
-    rev_row = anchors["rev_start"]
-    exp_row = anchors["exp_start"]
-    inc_row = anchors["inc_start"]
-
-    if rev_row is None or exp_row is None or inc_row is None:
-        return {}, {}, {}
-
-    month_col = find_month_column(ws)
-    rev_dict = {}
-    exp_dict = {}
-    inc_dict = {}
-
-    for r in range(rev_row + 1, exp_row):
-        raw_label = ws.cell(row=r, column=1).value
-        if not raw_label:
-            continue
-        txt = str(raw_label)
-        if re.search(r'\btotal revenue\b', txt, re.IGNORECASE):
-            continue
-        key = normalize_label(txt)
-        val = ws.cell(row=r, column=month_col).value or 0
-        rev_dict[key] = rev_dict.get(key, 0) + val
-
-    for r in range(exp_row + 1, inc_row):
-        raw_label = ws.cell(row=r, column=1).value
-        if not raw_label:
-            continue
-        txt = str(raw_label)
-        if re.search(r'\btotal operating expenses\b', txt, re.IGNORECASE):
-            continue
-        key = normalize_label(txt)
-        val = ws.cell(row=r, column=month_col).value or 0
-        exp_dict[key] = exp_dict.get(key, 0) + val
-
-    r = inc_row + 1
-    while r <= ws.max_row:
-        raw_label = ws.cell(row=r, column=1).value
-        if not raw_label:
-            break
-        txt = str(raw_label)
-        if re.search(r'\btotal\b', txt, re.IGNORECASE) or re.search(r'\bnet rental income\b', txt, re.IGNORECASE):
-            break
-        key = normalize_label(txt)
-        val = ws.cell(row=r, column=month_col).value or 0
-        inc_dict[key] = inc_dict.get(key, 0) + val
-        r += 1
-
-    return rev_dict, exp_dict, inc_dict
-
 
 def match_and_write(ws, start_row, end_row, src_dict, target_col_idx):
     candidates = list(src_dict.keys())
