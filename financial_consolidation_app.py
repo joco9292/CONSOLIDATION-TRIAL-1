@@ -351,10 +351,6 @@ def parse_income_sheet_month(ws):
         return {}, {}, {}
 
     month_col = find_month_column(ws)
-    
-    # Debug: Log the column being used and anchor positions
-    st.session_state.processing_logs.append(f"[DEBUG] Monthly parsing - Column: {month_col}, Revenue rows: {rev_row+1} to {exp_row-1}")
-    
     rev_dict = {}
     exp_dict = {}
     inc_dict = {}
