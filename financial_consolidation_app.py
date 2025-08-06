@@ -659,20 +659,20 @@ def process_one_file_month(file_bytes, filename, master_ws, header_row=5):
             for k in d:
                 d[k] = d[k] / 2
 
+    # Replace this section in process_one_file_month:
     # Check if we should adjust the row ranges
-    # If row 55 is empty or a header, start from row 56
+    # If row 53 is empty or a header, start from row 54
     first_revenue_row = 53
     first_value = master_ws.cell(row=53, column=1).value
     if not first_value or "revenue" in str(first_value).lower():
         first_revenue_row = 54
         st.session_state.processing_logs.append(f"[DEBUG] Adjusting monthly revenue to start at row {first_revenue_row}")
-    
-    # Adjusted row ranges
-    revenue_end = 65 if first_revenue_row == 53 else 66
-    
-    match_and_write(master_ws, first_revenue_row, revenue_end, rev_dict, target_col)
-    match_and_write(master_ws, 67, 81, exp_dict, target_col)
-    match_and_write(master_ws, 86, 94, inc_dict, target_col)
+
+    # CORRECTED: Don't extend the revenue section into the Expenses header
+    # Revenue should end at row 64, not 65 or 66
+    match_and_write(master_ws, first_revenue_row, 64, rev_dict, target_col)  # Revenue: 54-64
+    match_and_write(master_ws, 66, 79, exp_dict, target_col)  # Expenses: 66-79 (not 67!)
+    match_and_write(master_ws, 85, 92, inc_dict, target_col)  # Income: 85-92
     
     st.session_state.processing_logs.append(f"✅ Monthly data written from {site} → column {target_col}.")
     
