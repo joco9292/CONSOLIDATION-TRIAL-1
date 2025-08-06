@@ -672,7 +672,7 @@ def process_one_file_month(file_bytes, filename, master_ws, header_row=5):
     
     match_and_write(master_ws, first_revenue_row, revenue_end, rev_dict, target_col)
     match_and_write(master_ws, 67, 81, exp_dict, target_col)
-    match_and_write(master_ws, 86, 94, inc_dit, target_col)
+    match_and_write(master_ws, 86, 94, inc_dict, target_col)
     
     st.session_state.processing_logs.append(f"✅ Monthly data written from {site} → column {target_col}.")
     
