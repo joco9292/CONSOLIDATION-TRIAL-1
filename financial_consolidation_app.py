@@ -552,7 +552,7 @@ def process_one_file_ytd(file_bytes, filename, master_ws, header_row=5):
 
     match_and_write(master_ws, 6, 16, rev_dict, target_col)
     match_and_write(master_ws, 19, 33, exp_dict, target_col)
-    match_and_write(master_ws, 38, 46, inc_dict, target_col)
+    match_and_write(master_ws, 38, 44, inc_dict, target_col)
     st.session_state.processing_logs.append(f"✅ YTD data written from {site} → column {target_col}.")
 
 def diagnose_template_structure(master_ws_inc):
@@ -1100,7 +1100,7 @@ def process_all_files():
             'TOTAL REVENUE',
             'TOTAL OPERATING EXPENSES',
             'NET OPERATING INCOME (LOSS)',
-            'NET RENTAL INCOME (LOSS)'
+            'INCOME (LOSS)'
         }
 
         COL_BUDGET_MONTH = 3
