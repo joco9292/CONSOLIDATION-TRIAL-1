@@ -552,7 +552,7 @@ def process_one_file_ytd(file_bytes, filename, master_ws, header_row=5):
 
     match_and_write(master_ws, 6, 16, rev_dict, target_col)
     match_and_write(master_ws, 19, 33, exp_dict, target_col)
-    match_and_write(master_ws, 38, 44, inc_dict, target_col)
+    match_and_write(master_ws, 38, 46, inc_dict, target_col)
     st.session_state.processing_logs.append(f"✅ YTD data written from {site} → column {target_col}.")
 
 def diagnose_template_structure(master_ws_inc):
@@ -922,21 +922,32 @@ def process_all_files():
                     col_by_entity[entity_label] = matches[0]
 
         # Write values into Consolidated Balance Sheet
-        current_stage = "Writing balance sheet values"
+        current_stage = "Writing balance sheet values (with zeros)"
         for entity_label, summary in all_summaries.items():
             if entity_label not in col_by_entity:
-                st.session_state.processing_logs.append(f"Warning: Column for '{entity_label}' not found. Skipping.")
+                st.session_state.processing_logs.append(
+                    f"Warning: Column for '{entity_label}' not found. Skipping."
+                )
                 continue
+
             target_col = col_by_entity[entity_label]
-            for section in ["ASSETS", "LIABILITIES", "EQUITY"]:
-                for category, amount in summary[section].items():
-                    if category in row_by_category:
-                        row_idx = row_by_category[category]
-                        if entity_label == "207 Weston":
-                            ws_value = f"=({amount})/2"
-                        else:
-                            ws_value = amount
-                        master_ws_bs.cell(row=row_idx, column=target_col, value=ws_value)
+
+            # iterate over every label that exists in the template column A
+            for category, row_idx in row_by_category.items():
+
+                # pull the amount from whichever section contains it
+                amt = 0.0
+                for section in ("ASSETS", "LIABILITIES", "EQUITY"):
+                    amt = summary.get(section, {}).get(category, 0.0)
+                    if amt:            # stop once we find a non-zero entry
+                        break
+
+                # Weston adjustment
+                if entity_label == "207 Weston":
+                    amt = amt / 2
+
+                # write the number (0 if it wasn’t found)
+                master_ws_bs.cell(row=row_idx, column=target_col, value=amt)
 
         progress_bar.progress(0.7, text="Processing budget data...")
 
