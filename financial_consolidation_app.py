@@ -761,59 +761,68 @@ def parse_section(df, start_label, total_label):
         return {}
 
 
+import re
+import pandas as pd
+from io import BytesIO
+
 def process_balance_sheet_file(file_bytes):
+    """
+    Read one property’s balance-sheet workbook and return a dict with
+    ASSETS / LIABILITIES / EQUITY subtotals.
+    The sheet name can be written any way you like:  “Balance sheet”,
+    “BALANCE SHEET”, “BalanceSheet”, “balance-sheet”, …
+    """
     try:
+        # 1️⃣  locate the sheet -------------------------------------------------
         xls = pd.ExcelFile(BytesIO(file_bytes))
-        if "BALANCE SHEET" in xls.sheet_names:
-            sheet = "BALANCE SHEET"
-        elif "BALANCESHEET" in xls.sheet_names:
-            sheet = "BALANCESHEET"
-        else:
+
+        # normalise names: strip spaces, hyphens, underscores; lower-case
+        def norm(name):
+            return re.sub(r'[\s\-_]', '', name).lower()
+
+        sheet = next((s for s in xls.sheet_names if norm(s) == "balancesheet"), None)
+        if sheet is None:
+            st.session_state.processing_logs.append(
+                "WARNING: balance-sheet tab not found – file skipped"
+            )
             return None
 
+        # 2️⃣  load the data ----------------------------------------------------
         df = pd.read_excel(BytesIO(file_bytes), sheet_name=sheet, header=None)
 
-        # Check if required sections exist
-        if "ASSETS" not in df[0].values:
-            st.session_state.processing_logs.append("WARNING: 'ASSETS' section not found in balance sheet")
-            return None
-        if "LIABILITIES" not in df[0].values:
-            st.session_state.processing_logs.append("WARNING: 'LIABILITIES' section not found in balance sheet")
-            return None
-        if "EQUITY" not in df[0].values:
-            st.session_state.processing_logs.append("WARNING: 'EQUITY' section not found in balance sheet")
-            return None
+        # sanity check – make sure the three sections exist
+        for section in ("ASSETS", "LIABILITIES", "EQUITY"):
+            if section not in df[0].values:
+                st.session_state.processing_logs.append(
+                    f"WARNING: '{section}' section not found in balance sheet"
+                )
+                return None
 
-        assets = parse_section(df, "ASSETS", "TOTAL ASSETS")
+        # 3️⃣  parse each section ----------------------------------------------
+        assets      = parse_section(df, "ASSETS",      "TOTAL ASSETS")
         liabilities = parse_section(df, "LIABILITIES", "TOTAL LIABILITIES")
-        equity = parse_section(df, "EQUITY", "TOTAL EQUITY")
+        equity      = parse_section(df, "EQUITY",      "TOTAL EQUITY")
 
-        # Apply mappings
-        hst_keys = [k for k in liabilities if "HST" in k.upper() and "RECOVERABLE" in k.upper()]
-        acct_key = next((k for k in liabilities if "ACCOUNTS PAYABLE" in k.upper()), None)
+        # 4️⃣  canonicalise a few headings -------------------------------------
+        # HST recoverable → roll into Accounts Payable
+        hst_keys  = [k for k in liabilities if "HST" in k.upper() and "RECOVERABLE" in k.upper()]
+        acct_key  = next((k for k in liabilities if "ACCOUNTS PAYABLE" in k.upper()), None)
         if acct_key:
             for hst in hst_keys:
                 liabilities[acct_key] = liabilities.get(acct_key, 0.0) + liabilities.pop(hst, 0.0)
-        else:
-            if hst_keys:
-                first_hst = hst_keys[0]
-                liabilities["ACCOUNTS PAYABLE AND ACCRUED"] = liabilities.pop(first_hst, 0.0)
+        elif hst_keys:          # fall-back : move first HST line to a generic key
+            liabilities["ACCOUNTS PAYABLE AND ACCRUED"] = liabilities.pop(hst_keys[0], 0.0)
 
-        if "LOANS PAYABLE" in liabilities:
-            liabilities["Due to CSIT Companies"] = liabilities.pop("LOANS PAYABLE")
-
-        if "HOLDBACK PAYABLE" in liabilities:
-            liabilities["Deferred Revenue/Deposits"] = liabilities.pop("HOLDBACK PAYABLE")
-
-        if "LOANS RECEIVABLE" in assets:
-            assets["Due From CSIT Companies"] = assets.pop("LOANS RECEIVABLE")
-
-        if "PRIVATE ACCOUNTS" in equity:
-            equity["Retained Earnings"] = equity.pop("PRIVATE ACCOUNTS")
+        # other specific remappings
+        if "LOANS PAYABLE"   in liabilities: liabilities["Due to CSIT Companies"]       = liabilities.pop("LOANS PAYABLE")
+        if "HOLDBACK PAYABLE" in liabilities: liabilities["Deferred Revenue/Deposits"] = liabilities.pop("HOLDBACK PAYABLE")
+        if "LOANS RECEIVABLE" in assets:      assets["Due From CSIT Companies"]        = assets.pop("LOANS RECEIVABLE")
+        if "PRIVATE ACCOUNTS" in equity:      equity["Retained Earnings"]              = equity.pop("PRIVATE ACCOUNTS")
 
         return {"ASSETS": assets, "LIABILITIES": liabilities, "EQUITY": equity}
+
     except Exception as e:
-        st.session_state.processing_logs.append(f"ERROR in balance sheet processing: {str(e)}")
+        st.session_state.processing_logs.append(f"ERROR in balance-sheet processing: {str(e)}")
         return None
 
 
