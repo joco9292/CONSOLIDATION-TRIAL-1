@@ -921,7 +921,7 @@ def process_all_files():
                 if matches:
                     col_by_entity[entity_label] = matches[0]
 
-        # Write values into Consolidated Balance Sheet
+        # ------------------------------------------------------------------
         current_stage = "Writing balance sheet values (with zeros)"
         for entity_label, summary in all_summaries.items():
             if entity_label not in col_by_entity:
@@ -932,22 +932,24 @@ def process_all_files():
 
             target_col = col_by_entity[entity_label]
 
-            # iterate over every label that exists in the template column A
-            for category, row_idx in row_by_category.items():
+            # 🔸 iterate over every row in the template's column A
+            for row_idx, template_label in row_texts:
+                category = template_label.strip()
 
-                # pull the amount from whichever section contains it
+                # look for the amount in any section; default to 0.0
                 amt = 0.0
                 for section in ("ASSETS", "LIABILITIES", "EQUITY"):
                     amt = summary.get(section, {}).get(category, 0.0)
-                    if amt:            # stop once we find a non-zero entry
+                    if amt:                    # stop if we’ve found a non-zero value
                         break
 
-                # Weston adjustment
+                # Weston half-column rule
                 if entity_label == "207 Weston":
                     amt = amt / 2
 
-                # write the number (0 if it wasn’t found)
+                # write the figure — even if it's 0
                 master_ws_bs.cell(row=row_idx, column=target_col, value=amt)
+
 
         progress_bar.progress(0.7, text="Processing budget data...")
 
