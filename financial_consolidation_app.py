@@ -552,7 +552,7 @@ def process_one_file_ytd(file_bytes, filename, master_ws, header_row=5):
 
     match_and_write(master_ws, 6, 16, rev_dict, target_col)
     match_and_write(master_ws, 19, 33, exp_dict, target_col)
-    match_and_write(master_ws, 38, 46, inc_dict, target_col)
+    match_and_write(master_ws, 38, 44, inc_dict, target_col)
     st.session_state.processing_logs.append(f"✅ YTD data written from {site} → column {target_col}.")
 
 def diagnose_template_structure(master_ws_inc):
@@ -761,68 +761,59 @@ def parse_section(df, start_label, total_label):
         return {}
 
 
-import re
-import pandas as pd
-from io import BytesIO
-
 def process_balance_sheet_file(file_bytes):
-    """
-    Read one property’s balance-sheet workbook and return a dict with
-    ASSETS / LIABILITIES / EQUITY subtotals.
-    The sheet name can be written any way you like:  “Balance sheet”,
-    “BALANCE SHEET”, “BalanceSheet”, “balance-sheet”, …
-    """
     try:
-        # 1️⃣  locate the sheet -------------------------------------------------
         xls = pd.ExcelFile(BytesIO(file_bytes))
-
-        # normalise names: strip spaces, hyphens, underscores; lower-case
-        def norm(name):
-            return re.sub(r'[\s\-_]', '', name).lower()
-
-        sheet = next((s for s in xls.sheet_names if norm(s) == "balancesheet"), None)
-        if sheet is None:
-            st.session_state.processing_logs.append(
-                "WARNING: balance-sheet tab not found – file skipped"
-            )
+        if "BALANCE SHEET" in xls.sheet_names:
+            sheet = "BALANCE SHEET"
+        elif "BALANCESHEET" in xls.sheet_names:
+            sheet = "BALANCESHEET"
+        else:
             return None
 
-        # 2️⃣  load the data ----------------------------------------------------
         df = pd.read_excel(BytesIO(file_bytes), sheet_name=sheet, header=None)
 
-        # sanity check – make sure the three sections exist
-        for section in ("ASSETS", "LIABILITIES", "EQUITY"):
-            if section not in df[0].values:
-                st.session_state.processing_logs.append(
-                    f"WARNING: '{section}' section not found in balance sheet"
-                )
-                return None
+        # Check if required sections exist
+        if "ASSETS" not in df[0].values:
+            st.session_state.processing_logs.append("WARNING: 'ASSETS' section not found in balance sheet")
+            return None
+        if "LIABILITIES" not in df[0].values:
+            st.session_state.processing_logs.append("WARNING: 'LIABILITIES' section not found in balance sheet")
+            return None
+        if "EQUITY" not in df[0].values:
+            st.session_state.processing_logs.append("WARNING: 'EQUITY' section not found in balance sheet")
+            return None
 
-        # 3️⃣  parse each section ----------------------------------------------
-        assets      = parse_section(df, "ASSETS",      "TOTAL ASSETS")
+        assets = parse_section(df, "ASSETS", "TOTAL ASSETS")
         liabilities = parse_section(df, "LIABILITIES", "TOTAL LIABILITIES")
-        equity      = parse_section(df, "EQUITY",      "TOTAL EQUITY")
+        equity = parse_section(df, "EQUITY", "TOTAL EQUITY")
 
-        # 4️⃣  canonicalise a few headings -------------------------------------
-        # HST recoverable → roll into Accounts Payable
-        hst_keys  = [k for k in liabilities if "HST" in k.upper() and "RECOVERABLE" in k.upper()]
-        acct_key  = next((k for k in liabilities if "ACCOUNTS PAYABLE" in k.upper()), None)
+        # Apply mappings
+        hst_keys = [k for k in liabilities if "HST" in k.upper() and "RECOVERABLE" in k.upper()]
+        acct_key = next((k for k in liabilities if "ACCOUNTS PAYABLE" in k.upper()), None)
         if acct_key:
             for hst in hst_keys:
                 liabilities[acct_key] = liabilities.get(acct_key, 0.0) + liabilities.pop(hst, 0.0)
-        elif hst_keys:          # fall-back : move first HST line to a generic key
-            liabilities["ACCOUNTS PAYABLE AND ACCRUED"] = liabilities.pop(hst_keys[0], 0.0)
+        else:
+            if hst_keys:
+                first_hst = hst_keys[0]
+                liabilities["ACCOUNTS PAYABLE AND ACCRUED"] = liabilities.pop(first_hst, 0.0)
 
-        # other specific remappings
-        if "LOANS PAYABLE"   in liabilities: liabilities["Due to CSIT Companies"]       = liabilities.pop("LOANS PAYABLE")
-        if "HOLDBACK PAYABLE" in liabilities: liabilities["Deferred Revenue/Deposits"] = liabilities.pop("HOLDBACK PAYABLE")
-        if "LOANS RECEIVABLE" in assets:      assets["Due From CSIT Companies"]        = assets.pop("LOANS RECEIVABLE")
-        if "PRIVATE ACCOUNTS" in equity:      equity["Retained Earnings"]              = equity.pop("PRIVATE ACCOUNTS")
+        if "LOANS PAYABLE" in liabilities:
+            liabilities["Due to CSIT Companies"] = liabilities.pop("LOANS PAYABLE")
+
+        if "HOLDBACK PAYABLE" in liabilities:
+            liabilities["Deferred Revenue/Deposits"] = liabilities.pop("HOLDBACK PAYABLE")
+
+        if "LOANS RECEIVABLE" in assets:
+            assets["Due From CSIT Companies"] = assets.pop("LOANS RECEIVABLE")
+
+        if "PRIVATE ACCOUNTS" in equity:
+            equity["Retained Earnings"] = equity.pop("PRIVATE ACCOUNTS")
 
         return {"ASSETS": assets, "LIABILITIES": liabilities, "EQUITY": equity}
-
     except Exception as e:
-        st.session_state.processing_logs.append(f"ERROR in balance-sheet processing: {str(e)}")
+        st.session_state.processing_logs.append(f"ERROR in balance sheet processing: {str(e)}")
         return None
 
 
@@ -930,35 +921,22 @@ def process_all_files():
                 if matches:
                     col_by_entity[entity_label] = matches[0]
 
-        # ------------------------------------------------------------------
-        current_stage = "Writing balance sheet values (with zeros)"
+        # Write values into Consolidated Balance Sheet
+        current_stage = "Writing balance sheet values"
         for entity_label, summary in all_summaries.items():
             if entity_label not in col_by_entity:
-                st.session_state.processing_logs.append(
-                    f"Warning: Column for '{entity_label}' not found. Skipping."
-                )
+                st.session_state.processing_logs.append(f"Warning: Column for '{entity_label}' not found. Skipping.")
                 continue
-
             target_col = col_by_entity[entity_label]
-
-            # 🔸 iterate over every row in the template's column A
-            for row_idx, template_label in row_texts:
-                category = template_label.strip()
-
-                # look for the amount in any section; default to 0.0
-                amt = 0.0
-                for section in ("ASSETS", "LIABILITIES", "EQUITY"):
-                    amt = summary.get(section, {}).get(category, 0.0)
-                    if amt:                    # stop if we’ve found a non-zero value
-                        break
-
-                # Weston half-column rule
-                if entity_label == "207 Weston":
-                    amt = amt / 2
-
-                # write the figure — even if it's 0
-                master_ws_bs.cell(row=row_idx, column=target_col, value=amt)
-
+            for section in ["ASSETS", "LIABILITIES", "EQUITY"]:
+                for category, amount in summary[section].items():
+                    if category in row_by_category:
+                        row_idx = row_by_category[category]
+                        if entity_label == "207 Weston":
+                            ws_value = f"=({amount})/2"
+                        else:
+                            ws_value = amount
+                        master_ws_bs.cell(row=row_idx, column=target_col, value=ws_value)
 
         progress_bar.progress(0.7, text="Processing budget data...")
 
